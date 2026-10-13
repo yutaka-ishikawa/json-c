@@ -8,6 +8,9 @@
  *
  */
 
+/**/
+extern char *strcat(char *dst, const char *src);
+
 #include "config.h"
 
 #include "strerror_override.h"

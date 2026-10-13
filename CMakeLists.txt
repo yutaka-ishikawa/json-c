@@ -48,6 +48,10 @@ option(BUILD_STATIC_LIBS  "Default to building static libraries" ON)
 # SGX Enclave modification:
 # Configure json-c for compilation with the Intel SGX trusted C library.
 option(SGX_ENCLAVE "Configure json-c for use inside an Intel SGX Enclave" OFF)
+set(SGX_SDK "$ENV{SGX_SDK}" CACHE PATH "Intel SGX SDK root")
+if(SGX_ENCLAVE AND NOT SGX_SDK)
+    set(SGX_SDK "/opt/intel/sgxsdk" CACHE PATH "Intel SGX SDK root" FORCE)
+endif()
 
 # Generate a release merge and test it to verify the correctness of republishing the package.
 ADD_CUSTOM_TARGET(distcheck
@@ -584,7 +588,9 @@ configure_file(json.h.cmakein ${PROJECT_BINARY_DIR}/json.h @ONLY)
 include_directories(${PROJECT_SOURCE_DIR})
 include_directories(${PROJECT_BINARY_DIR})
 
-add_subdirectory(doc)
+if(NOT SGX_ENCLAVE)
+    add_subdirectory(doc)
+endif()
 
 # "uninstall" custom target for make generators in unix like operating systems
 # and if that target is not present
@@ -597,6 +603,41 @@ if (CMAKE_GENERATOR STREQUAL "Unix Makefiles")
     endif()
 endif()
 
+# SGX trusted static library: replace the normal json-c target in SGX mode.
+if(SGX_ENCLAVE)
+    if(NOT EXISTS "${SGX_SDK}/include/tlibc")
+        message(FATAL_ERROR "SGX SDK trusted headers not found under: ${SGX_SDK}")
+    endif()
+
+    # Compile against SGX trusted libc, not the host's glibc headers.
+    # JSON_C_SOURCES and JSON_C_PUBLIC_HEADERS are the existing json-c lists.
+    add_library(json-c-sgx STATIC ${JSON_C_SOURCES} ${JSON_C_HEADERS})
+    set_target_properties(json-c-sgx PROPERTIES
+        OUTPUT_NAME "json-c-sgx"
+        POSITION_INDEPENDENT_CODE ON
+    )
+    target_compile_definitions(json-c-sgx PRIVATE SGX_ENCLAVE=1)
+    target_compile_options(json-c-sgx PRIVATE
+        -m64 -O2 -nostdinc -fvisibility=hidden -fpie
+        -ffunction-sections -fdata-sections -fstack-protector-strong
+    )
+    # BEFORE ensures trusted headers precede json-c source/build headers.
+    target_include_directories(json-c-sgx BEFORE PRIVATE
+        "${SGX_SDK}/include/tlibc"
+        "${SGX_SDK}/include"
+        "${PROJECT_BINARY_DIR}"
+        "${PROJECT_SOURCE_DIR}"
+    )
+    # CMake's normal json-c installs are intentionally disabled in SGX mode.
+    install(TARGETS json-c-sgx
+        ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+        COMPONENT sgx
+    )
+    install(FILES ${JSON_C_PUBLIC_HEADERS}
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/json-c"
+        COMPONENT sgx
+    )
+else()
 # XXX for a normal full distribution we'll need to figure out
 # XXX how to build both shared and static libraries.
 # Probably leverage that to build a local VALGRIND=1 library for testing too.
@@ -643,6 +684,8 @@ if (BUILD_STATIC_LIBS AND BUILD_SHARED_LIBS)
     list(APPEND CMAKE_TARGETS ${STATIC_LIB})
 endif ()
 
+endif() # SGX_ENCLAVE target selection
+
 # Always create new install dirs with 0755 permissions, regardless of umask
 set(CMAKE_INSTALL_DEFAULT_DIRECTORY_PERMISSIONS
 	OWNER_READ
@@ -654,6 +697,7 @@ set(CMAKE_INSTALL_DEFAULT_DIRECTORY_PERMISSIONS
 	WORLD_EXECUTE
    )
 
+if(NOT SGX_ENCLAVE)
 install(TARGETS ${CMAKE_TARGETS}
     EXPORT ${PROJECT_NAME}-targets
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
@@ -708,6 +752,8 @@ install(
     install(FILES ${PROJECT_BINARY_DIR}/json-c.pc DESTINATION "${INSTALL_PKGCONFIG_DIR}")
 
 install(FILES ${JSON_C_PUBLIC_HEADERS} DESTINATION ${CMAKE_INSTALL_FULL_INCLUDEDIR}/json-c)
+
+endif() # normal host installation
 
 if (CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME AND BUILD_TESTING AND
    (NOT MSVC OR NOT (MSVC_VERSION LESS 1800)) # Tests need at least VS2013
