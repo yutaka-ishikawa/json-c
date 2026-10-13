@@ -45,6 +45,10 @@ include(CMakePackageConfigHelpers)
 option(BUILD_SHARED_LIBS  "Default to building shared libraries" ON)
 option(BUILD_STATIC_LIBS  "Default to building static libraries" ON)
 
+# SGX Enclave modification:
+# Configure json-c for compilation with the Intel SGX trusted C library.
+option(SGX_ENCLAVE "Configure json-c for use inside an Intel SGX Enclave" OFF)
+
 # Generate a release merge and test it to verify the correctness of republishing the package.
 ADD_CUSTOM_TARGET(distcheck
 COMMAND make package_source
@@ -333,6 +337,64 @@ endif()
 # Hardware random number is not available on Windows? Says, config.h.win32. Best to preserve compatibility.
 if (WIN32)
     set(ENABLE_RDRAND 0)
+endif()
+
+if (SGX_ENCLAVE)
+    # SGX Enclave modification:
+    # CMake feature probes above run on the untrusted host.  Override the
+    # results that would otherwise make trusted objects depend on host-only
+    # headers, locale state, filesystem I/O, syslog, or host random sources.
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build no shared library for SGX" FORCE)
+    set(BUILD_STATIC_LIBS ON CACHE BOOL "Build static library for SGX" FORCE)
+    set(BUILD_APPS OFF CACHE BOOL "Do not build host applications for SGX" FORCE)
+    set(BUILD_TESTING OFF CACHE BOOL "Do not build host tests for SGX" FORCE)
+    set(ENABLE_THREADING OFF CACHE BOOL "Disable json-c threading for SGX" FORCE)
+    set(DISABLE_THREAD_LOCAL_STORAGE ON CACHE BOOL "Disable TLS for SGX" FORCE)
+    set(ENABLE_RDRAND OFF CACHE BOOL "Use sgx_read_rand() in trusted code" FORCE)
+    set(DISABLE_EXTRA_LIBS ON CACHE BOOL "Do not link host helper libraries" FORCE)
+
+    set(HAVE_DLFCN_H 0)
+    set(HAVE_ENDIAN_H 0)
+    set(HAVE_FCNTL_H 0)
+    set(HAVE_LOCALE_H 0)
+    set(HAVE_STRINGS_H 0)
+    set(HAVE_SYSLOG_H 0)
+    set(HAVE_SYS_PARAM_H 0)
+    set(HAVE_SYS_RANDOM_H 0)
+    set(HAVE_SYS_RESOURCE_H 0)
+    set(HAVE_SYS_STAT_H 0)
+    set(HAVE_SYS_TYPES_H 0)
+    set(HAVE_UNISTD_H 0)
+    set(HAVE_XLOCALE_H 0)
+    set(HAVE_BSD_STDLIB_H 0)
+
+    set(HAVE_ARC4RANDOM 0)
+    set(HAVE_GETRANDOM 0)
+    set(HAVE_GETRUSAGE 0)
+    set(HAVE_OPEN 0)
+    set(HAVE_SETLOCALE 0)
+    set(HAVE_USELOCALE 0)
+    set(HAVE_DUPLOCALE 0)
+    set(HAVE_STRCASECMP 0)
+    set(HAVE_STRNCASECMP 0)
+    set(HAVE_STRDUP 0)
+    set(HAVE_VASPRINTF 0)
+    set(HAVE_VSYSLOG 0)
+    set(HAVE___THREAD 0)
+    unset(SPEC___THREAD)
+
+    # Intel SGX on Linux is an x86-64 ABI.  These values avoid carrying
+    # host-probed ssize_t details into the trusted build.
+    set(SIZEOF_INT 4)
+    set(SIZEOF_INT64_T 8)
+    set(SIZEOF_LONG 8)
+    set(SIZEOF_LONG_LONG 8)
+    set(SIZEOF_SIZE_T 8)
+    set(SIZEOF_SSIZE_T 8)
+
+    # SGX Enclave modification:
+    # json-c's trusted build does not use libraries found by host probes.
+    set(CMAKE_REQUIRED_LIBRARIES "")
 endif()
 
 # Once we've done basic symbol/header searches let's add them in.

@@ -5,13 +5,25 @@
  * it under the terms of the MIT license. See COPYING for details.
  */
 
+#ifndef SGX_ENCLAVE
 #include <stdio.h>
+#endif
 
 #include "config.h"
 #include "json_inttypes.h"
 #include "json_object.h"
 #include "json_visit.h"
 #include "linkhash.h"
+
+#ifdef SGX_ENCLAVE
+/*
+ * SGX Enclave modification:
+ * Do not write diagnostics to host stderr from trusted code.
+ */
+#define JSON_C_VISIT_REPORT(...) ((void)0)
+#else
+#define JSON_C_VISIT_REPORT(...) fprintf(stderr, __VA_ARGS__)
+#endif
 
 static int _json_c_visit(json_object *jso, json_object *parent_jso, const char *jso_key,
                          size_t *jso_index, json_c_visit_userfunc *userfunc, void *userarg);
@@ -40,8 +52,8 @@ static int _json_c_visit(json_object *jso, json_object *parent_jso, const char *
 	case JSON_C_VISIT_RETURN_STOP:
 	case JSON_C_VISIT_RETURN_ERROR: return userret;
 	default:
-		fprintf(stderr, "ERROR: invalid return value from json_c_visit userfunc: %d\n",
-		        userret);
+		JSON_C_VISIT_REPORT("ERROR: invalid return value from json_c_visit userfunc: %d\n",
+		                    userret);
 		return JSON_C_VISIT_RETURN_ERROR;
 	}
 
@@ -68,8 +80,8 @@ static int _json_c_visit(json_object *jso, json_object *parent_jso, const char *
 			if (userret != JSON_C_VISIT_RETURN_CONTINUE &&
 			    userret != JSON_C_VISIT_RETURN_SKIP)
 			{
-				fprintf(stderr, "INTERNAL ERROR: _json_c_visit returned %d\n",
-				        userret);
+				JSON_C_VISIT_REPORT("INTERNAL ERROR: _json_c_visit returned %d\n",
+				                    userret);
 				return JSON_C_VISIT_RETURN_ERROR;
 			}
 		}
@@ -91,16 +103,16 @@ static int _json_c_visit(json_object *jso, json_object *parent_jso, const char *
 			if (userret != JSON_C_VISIT_RETURN_CONTINUE &&
 			    userret != JSON_C_VISIT_RETURN_SKIP)
 			{
-				fprintf(stderr, "INTERNAL ERROR: _json_c_visit returned %d\n",
-				        userret);
+				JSON_C_VISIT_REPORT("INTERNAL ERROR: _json_c_visit returned %d\n",
+				                    userret);
 				return JSON_C_VISIT_RETURN_ERROR;
 			}
 		}
 		break;
 	}
 	default:
-		fprintf(stderr, "INTERNAL ERROR: _json_c_visit found object of unknown type: %d\n",
-		        json_object_get_type(jso));
+		JSON_C_VISIT_REPORT("INTERNAL ERROR: _json_c_visit found object of unknown type: %d\n",
+		                    json_object_get_type(jso));
 		return JSON_C_VISIT_RETURN_ERROR;
 	}
 
@@ -120,8 +132,8 @@ static int _json_c_visit(json_object *jso, json_object *parent_jso, const char *
 	case JSON_C_VISIT_RETURN_STOP:
 	case JSON_C_VISIT_RETURN_ERROR: return userret;
 	default:
-		fprintf(stderr, "ERROR: invalid return value from json_c_visit userfunc: %d\n",
-		        userret);
+		JSON_C_VISIT_REPORT("ERROR: invalid return value from json_c_visit userfunc: %d\n",
+		                    userret);
 		return JSON_C_VISIT_RETURN_ERROR;
 	}
 	// NOTREACHED

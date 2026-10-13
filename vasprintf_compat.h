@@ -15,8 +15,18 @@
 #include <stdlib.h>
 
 #if !defined(HAVE_VASPRINTF)
+#ifdef SGX_ENCLAVE
+/*
+ * SGX Enclave modification:
+ * Use a json-c-private name so trusted builds do not collide with a host
+ * vasprintf declaration.  The implementation below only needs vsnprintf().
+ */
+#define vasprintf json_c_sgx_vasprintf
+static int json_c_sgx_vasprintf(char **buf, const char *fmt, va_list ap)
+#else
 /* CAW: compliant version of vasprintf */
 static int vasprintf(char **buf, const char *fmt, va_list ap)
+#endif
 {
 #ifndef _WIN32
 	static char _T_emptybuffer = '\0';
@@ -51,7 +61,16 @@ static int vasprintf(char **buf, const char *fmt, va_list ap)
 		return -1;
 	}
 
+#ifdef SGX_ENCLAVE
+	/*
+	 * SGX Enclave modification:
+	 * Avoid depending on vsprintf(); the trusted C library provides the
+	 * bounded vsnprintf() interface needed here.
+	 */
+	if ((chars = vsnprintf(b, (size_t)chars + 1, fmt, ap)) < 0)
+#else
 	if ((chars = vsprintf(b, fmt, ap)) < 0)
+#endif
 	{
 		free(b);
 	}

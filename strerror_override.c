@@ -59,8 +59,16 @@ static struct
 /* clang-format on */
 
 // Enabled during tests
+#ifdef SGX_ENCLAVE
+/*
+ * SGX Enclave modification:
+ * Never inspect the untrusted process environment from trusted code.
+ */
+static int _json_c_strerror_enable = 1;
+#else
 static int _json_c_strerror_enable = 0;
 extern char *getenv(const char *name); // Avoid including stdlib.h
+#endif
 
 #define PREFIX "ERRNO="
 static char errno_buf[128] = PREFIX;
@@ -70,10 +78,18 @@ char *_json_c_strerror(int errno_in)
 	char digbuf[20];
 	int ii, jj;
 
+#ifndef SGX_ENCLAVE
 	if (!_json_c_strerror_enable)
 		_json_c_strerror_enable = (getenv("_JSON_C_STRERROR_ENABLE") == NULL) ? -1 : 1;
 	if (_json_c_strerror_enable == -1)
 		return strerror(errno_in);
+#else
+	/*
+	 * SGX Enclave modification:
+	 * Always use json-c's internal errno names/numbers in trusted code.
+	 */
+	(void)_json_c_strerror_enable;
+#endif
 
 	// Avoid standard functions, so we don't need to include any
 	// headers, or guess at signatures.

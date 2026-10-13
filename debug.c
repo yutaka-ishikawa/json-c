@@ -12,7 +12,9 @@
 #include "config.h"
 
 #include <stdarg.h>
+#ifndef SGX_ENCLAVE
 #include <stdio.h>
+#endif
 #include <stdlib.h>
 #include <string.h>
 
@@ -32,6 +34,44 @@
 
 static int _syslog = 0;
 static int _debug = 0;
+
+#ifdef SGX_ENCLAVE
+/*
+ * SGX Enclave modification:
+ * Suppress implicit stdout/stderr/syslog output from trusted code.  An
+ * application that wants logging should provide an explicit, reviewed OCALL.
+ */
+void mc_set_debug(int debug)
+{
+	_debug = debug;
+}
+
+int mc_get_debug(void)
+{
+	return _debug;
+}
+
+extern void mc_set_syslog(int syslog)
+{
+	_syslog = syslog;
+}
+
+void mc_debug(const char *msg, ...)
+{
+	(void)msg;
+}
+
+void mc_error(const char *msg, ...)
+{
+	(void)msg;
+}
+
+void mc_info(const char *msg, ...)
+{
+	(void)msg;
+}
+
+#else /* SGX_ENCLAVE */
 
 void mc_set_debug(int debug)
 {
@@ -94,3 +134,4 @@ void mc_info(const char *msg, ...)
 		vfprintf(stderr, msg, ap);
 	va_end(ap);
 }
+#endif /* SGX_ENCLAVE */

@@ -58,7 +58,9 @@
 #include "json_util.h"
 #include "printbuf.h"
 
+#ifndef SGX_ENCLAVE
 static int _json_object_to_fd(int fd, struct json_object *obj, int flags, const char *filename);
+#endif
 
 static char _last_err[256] = "";
 
@@ -77,6 +79,68 @@ void _json_c_set_last_err(const char *err_fmt, ...)
 	(void)vsnprintf(_last_err, sizeof(_last_err), err_fmt, ap);
 	va_end(ap);
 }
+
+#ifdef SGX_ENCLAVE
+/*
+ * SGX Enclave modification:
+ * Enclaves have no direct host file-descriptor namespace.  Keep these public
+ * json-c APIs link-compatible, but fail closed.  Read the file outside the
+ * enclave and pass the bytes through an ECALL, then use json_tokener_parse_ex().
+ */
+static void json_c_sgx_file_io_unavailable(const char *function_name)
+{
+	_json_c_set_last_err("%s is unavailable inside an Intel SGX Enclave\n", function_name);
+}
+
+struct json_object *json_object_from_fd(int fd)
+{
+	(void)fd;
+	json_c_sgx_file_io_unavailable("json_object_from_fd");
+	return NULL;
+}
+
+struct json_object *json_object_from_fd_ex(int fd, int in_depth)
+{
+	(void)fd;
+	(void)in_depth;
+	json_c_sgx_file_io_unavailable("json_object_from_fd_ex");
+	return NULL;
+}
+
+struct json_object *json_object_from_file(const char *filename)
+{
+	(void)filename;
+	json_c_sgx_file_io_unavailable("json_object_from_file");
+	return NULL;
+}
+
+int json_object_to_file_ext(const char *filename, struct json_object *obj, int flags)
+{
+	(void)filename;
+	(void)obj;
+	(void)flags;
+	json_c_sgx_file_io_unavailable("json_object_to_file_ext");
+	return -1;
+}
+
+int json_object_to_fd(int fd, struct json_object *obj, int flags)
+{
+	(void)fd;
+	(void)obj;
+	(void)flags;
+	json_c_sgx_file_io_unavailable("json_object_to_fd");
+	return -1;
+}
+
+int json_object_to_file(const char *filename, struct json_object *obj)
+{
+	(void)filename;
+	(void)obj;
+	json_c_sgx_file_io_unavailable("json_object_to_file");
+	return -1;
+}
+
+#else /* SGX_ENCLAVE */
 
 struct json_object *json_object_from_fd(int fd)
 {
@@ -231,6 +295,7 @@ int json_object_to_file(const char *filename, struct json_object *obj)
 {
 	return json_object_to_file_ext(filename, obj, JSON_C_TO_STRING_PLAIN);
 }
+#endif /* SGX_ENCLAVE */
 
 // Deprecated json_parse_double function.  See json_tokener_parse_double instead.
 int json_parse_double(const char *buf, double *retval)

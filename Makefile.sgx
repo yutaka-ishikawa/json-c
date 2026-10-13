@@ -1,0 +1,89 @@
+# Build json-c as a trusted static library for an Intel SGX Enclave.
+#
+# SGX Enclave modification:
+# This build intentionally compiles json-c against the SGX trusted headers
+# rather than glibc headers.  The resulting archive is meant to be linked
+# into an enclave, not into the untrusted host application.
+
+SGX_SDK ?= /opt/intel/sgxsdk
+SGX_CC ?= gcc
+SGX_AR ?= ar
+
+CONFIG_DIR ?= build-sgx-config
+BUILD_DIR ?= build-sgx
+CONFIG_STAMP := $(CONFIG_DIR)/.sgx-configured
+
+# Keep this overridable for diagnostic builds.  A real enclave build should
+# leave -nostdinc enabled.
+SGX_NOSTDINC ?= -nostdinc
+
+JSON_C_SRCS := \
+	arraylist.c \
+	debug.c \
+	json_c_version.c \
+	json_object.c \
+	json_object_iterator.c \
+	json_tokener.c \
+	json_util.c \
+	json_visit.c \
+	linkhash.c \
+	printbuf.c \
+	random_seed.c \
+	strerror_override.c \
+	json_pointer.c \
+	json_patch.c
+
+JSON_C_OBJS := $(JSON_C_SRCS:%.c=$(BUILD_DIR)/%.o)
+TARGET := $(BUILD_DIR)/libjson-c-sgx.a
+
+SGX_INCLUDES := \
+	-I$(SGX_SDK)/include \
+	-I$(SGX_SDK)/include/tlibc \
+	-I$(CONFIG_DIR) \
+	-I.
+
+SGX_CFLAGS ?= \
+	-m64 \
+	-O2 \
+	-DSGX_ENCLAVE=1 \
+	$(SGX_NOSTDINC) \
+	-fvisibility=hidden \
+	-fpie \
+	-ffunction-sections \
+	-fdata-sections \
+	-fstack-protector-strong
+
+.PHONY: all config clean check-undefined
+
+all: $(TARGET)
+
+config: $(CONFIG_STAMP)
+
+$(CONFIG_STAMP): CMakeLists.txt
+	cmake -S . -B $(CONFIG_DIR) \
+		-DSGX_ENCLAVE=ON \
+		-DBUILD_SHARED_LIBS=OFF \
+		-DBUILD_STATIC_LIBS=ON \
+		-DBUILD_APPS=OFF \
+		-DBUILD_TESTING=OFF
+	@test -f $(CONFIG_DIR)/config.h
+	@test -f $(CONFIG_DIR)/json_config.h
+	@test -f $(CONFIG_DIR)/json.h
+	@touch $(CONFIG_STAMP)
+
+$(BUILD_DIR):
+	mkdir -p $(BUILD_DIR)
+
+$(BUILD_DIR)/%.o: %.c | $(BUILD_DIR) config
+	$(SGX_CC) $(SGX_CFLAGS) $(SGX_INCLUDES) -c $< -o $@
+
+$(TARGET): $(JSON_C_OBJS)
+	$(SGX_AR) rcs $@ $^
+
+# This is a diagnostic only.  malloc/free/memcpy/etc. and sgx_read_rand are
+# expected to remain undefined until the final enclave link.
+check-undefined: $(TARGET)
+	nm -u $(TARGET) | sort -u
+
+clean:
+	rm -rf $(BUILD_DIR) $(CONFIG_DIR)

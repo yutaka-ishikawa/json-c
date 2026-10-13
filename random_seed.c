@@ -11,6 +11,32 @@
 
 #include "random_seed.h"
 #include "config.h"
+
+#ifdef SGX_ENCLAVE
+#include <sgx_trts.h>
+
+/*
+ * SGX Enclave modification:
+ * Use the trusted SGX random generator rather than /dev/urandom, getrandom(),
+ * RDRAND probing, arc4random(), or host time.
+ */
+int json_c_get_random_seed(void)
+{
+	int seed = 0;
+	sgx_status_t status;
+
+	status = sgx_read_rand((unsigned char *)&seed, sizeof(seed));
+	if (status != SGX_SUCCESS)
+		return 0;
+
+	/* -1 is used by json-c as an uninitialized hash-seed sentinel. */
+	if (seed == -1)
+		seed = 0;
+	return seed;
+}
+
+#else /* SGX_ENCLAVE */
+
 #include "strerror_override.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -355,3 +381,4 @@ int json_c_get_random_seed(void)
 	return get_time_seed();
 #endif /* !HAVE_ARC4RANDOM */
 }
+#endif /* SGX_ENCLAVE */

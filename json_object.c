@@ -21,9 +21,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef HAVE_LOCALE_H
+#if defined(HAVE_LOCALE_H) && !defined(SGX_ENCLAVE)
 #include <locale.h>
-#endif /* HAVE_LOCALE_H */
+#endif /* HAVE_LOCALE_H && !SGX_ENCLAVE */
 
 #include "arraylist.h"
 #include "debug.h"
@@ -2076,7 +2076,15 @@ int json_object_deep_copy(struct json_object *src, struct json_object **dst,
 
 static void json_abort(const char *message)
 {
+#ifdef SGX_ENCLAVE
+	/*
+	 * SGX Enclave modification:
+	 * Trusted code must not write to host stderr implicitly.
+	 */
+	(void)message;
+#else
 	if (message != NULL)
 		fprintf(stderr, "json-c aborts with error: %s\n", message);
+#endif
 	abort();
 }

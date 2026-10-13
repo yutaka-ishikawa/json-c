@@ -29,7 +29,15 @@ typedef unsigned __int64 uint64_t;
 
 #endif
 
-#if defined(_MSC_VER) && !defined(ssize_t)
+#ifdef SGX_ENCLAVE
+/*
+ * SGX Enclave modification:
+ * Intel SGX trusted libc does not expose ssize_t through the normal host
+ * sys/types.h path.  json-c only needs a signed size type internally.
+ * Intel SGX on Linux uses the 64-bit ABI, where long is 64 bits.
+ */
+typedef long ssize_t;
+#elif defined(_MSC_VER) && !defined(ssize_t)
 #include <BaseTsd.h>
 typedef SSIZE_T ssize_t;
 #endif

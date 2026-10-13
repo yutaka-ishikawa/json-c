@@ -34,10 +34,10 @@
 #include "printbuf.h"
 #include "strdup_compat.h"
 
-#ifdef HAVE_LOCALE_H
+#if defined(HAVE_LOCALE_H) && !defined(SGX_ENCLAVE)
 #include <locale.h>
-#endif /* HAVE_LOCALE_H */
-#ifdef HAVE_XLOCALE_H
+#endif /* HAVE_LOCALE_H && !SGX_ENCLAVE */
+#if defined(HAVE_XLOCALE_H) && !defined(SGX_ENCLAVE)
 #include <xlocale.h>
 #endif
 #ifdef HAVE_STRINGS_H
@@ -46,12 +46,39 @@
 
 #define jt_hexdigit(x) (((x) <= '9') ? (x) - '0' : ((x)&7) + 9)
 
-#if !HAVE_STRNCASECMP && defined(_WIN32)
+#ifdef SGX_ENCLAVE
+/*
+ * SGX Enclave modification:
+ * JSON keywords are ASCII.  Use an ASCII-only replacement and avoid the
+ * host strings.h/locale implementation.
+ */
+static int json_c_sgx_strncasecmp(const char *s1, const char *s2, size_t n)
+{
+	while (n-- > 0)
+	{
+		unsigned char c1 = (unsigned char)*s1++;
+		unsigned char c2 = (unsigned char)*s2++;
+
+		if (c1 >= 'A' && c1 <= 'Z')
+			c1 = (unsigned char)(c1 + ('a' - 'A'));
+		if (c2 >= 'A' && c2 <= 'Z')
+			c2 = (unsigned char)(c2 + ('a' - 'A'));
+
+		if (c1 != c2)
+			return c1 < c2 ? -1 : 1;
+		if (c1 == '\0')
+			return 0;
+	}
+	return 0;
+}
+#define strncasecmp json_c_sgx_strncasecmp
+
+#elif !HAVE_STRNCASECMP && defined(_WIN32)
 /* MSC has the version as _strnicmp */
 #define strncasecmp _strnicmp
 #elif !HAVE_STRNCASECMP
 #error You do not have strncasecmp on your system.
-#endif /* HAVE_STRNCASECMP */
+#endif /* SGX_ENCLAVE / HAVE_STRNCASECMP */
 
 #if defined(_MSC_VER) && (_MSC_VER <= 1800)
 /* VS2013 doesn't know about "inline" */
@@ -321,10 +348,10 @@ struct json_object *json_tokener_parse_ex(struct json_tokener *tok, const char *
 	unsigned int nBytes = 0;
 	unsigned int *nBytesp = &nBytes;
 
-#ifdef HAVE_USELOCALE
+#if defined(HAVE_USELOCALE) && !defined(SGX_ENCLAVE)
 	locale_t oldlocale = uselocale(NULL);
 	locale_t newloc;
-#elif defined(HAVE_SETLOCALE)
+#elif defined(HAVE_SETLOCALE) && !defined(SGX_ENCLAVE)
 	char *oldlocale = NULL;
 #endif
 
@@ -343,7 +370,7 @@ struct json_object *json_tokener_parse_ex(struct json_tokener *tok, const char *
 		return NULL;
 	}
 
-#ifdef HAVE_USELOCALE
+#if defined(HAVE_USELOCALE) && !defined(SGX_ENCLAVE)
 	{
 #ifdef HAVE_DUPLOCALE
 		locale_t duploc = duplocale(oldlocale);
@@ -373,7 +400,7 @@ struct json_object *json_tokener_parse_ex(struct json_tokener *tok, const char *
 #endif
 		uselocale(newloc);
 	}
-#elif defined(HAVE_SETLOCALE)
+#elif defined(HAVE_SETLOCALE) && !defined(SGX_ENCLAVE)
 	{
 		char *tmplocale;
 		tmplocale = setlocale(LC_NUMERIC, NULL);
@@ -1345,10 +1372,10 @@ out:
 			tok->err = json_tokener_error_parse_eof;
 	}
 
-#ifdef HAVE_USELOCALE
+#if defined(HAVE_USELOCALE) && !defined(SGX_ENCLAVE)
 	uselocale(oldlocale);
 	freelocale(newloc);
-#elif defined(HAVE_SETLOCALE)
+#elif defined(HAVE_SETLOCALE) && !defined(SGX_ENCLAVE)
 	setlocale(LC_NUMERIC, oldlocale);
 	free(oldlocale);
 #endif
